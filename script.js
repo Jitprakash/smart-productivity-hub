@@ -1,106 +1,349 @@
-// --------------------------
-// Shared Helpers
-// --------------------------
-function escapeHtml(text) {
-  return text.replace(/[&<>"']/g, function (m) {
-    return {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;",
-    }[m];
-  });
-}
+// State management
+let activeTab = "notes";
+let darkMode = false;
 
-// --------------------------
-// Dark Mode Toggle
-// --------------------------
-const darkModeBtn = document.getElementById("dark-mode-toggle");
-darkModeBtn.addEventListener("click", () => {
-  document.body.classList.toggle("dark");
-});
-
-// --------------------------
-// Navigation
-// --------------------------
-const navBtns = document.querySelectorAll(".nav-btn");
-const sections = document.querySelectorAll(".content-section");
-
-navBtns.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    navBtns.forEach((b) =>
-      b.classList.remove("active", "bg-blue-100", "text-blue-600")
-    );
-    btn.classList.add("active", "bg-blue-100", "text-blue-600");
-
-    sections.forEach((sec) => sec.classList.add("hidden"));
-    if (btn.id === "nav-notes")
-      document.getElementById("notes-section").classList.remove("hidden");
-    else if (btn.id === "nav-products")
-      document.getElementById("products-section").classList.remove("hidden");
-    else if (btn.id === "nav-todos")
-      document.getElementById("todos-section").classList.remove("hidden");
-  });
-});
-
-// --------------------------
-// Notes Module
-// --------------------------
+// Notes state
 let notes = [];
-let editingNoteId = null;
+let editingNoteId = null; // used for edit flows
 
-function formatText(command) {
-  document.execCommand(command);
+// Products + sample data
+let products = [
+  {
+    id: 1,
+    name: "Mathematics Textbook",
+    description: "Comprehensive math textbook for university students",
+    category: "books",
+    price: 49.99,
+    rating: 4.5,
+    image: "https://picsum.photos/seed/mathbook/600/400",
+  },
+  {
+    id: 2,
+    name: "Premium Notebook Set",
+    description: "Set of 3 high-quality notebooks for note-taking",
+    category: "stationery",
+    price: 19.99,
+    rating: 4.8,
+    image: "https://picsum.photos/seed/notebooks/600/400",
+  },
+  {
+    id: 3,
+    name: "Wireless Earbuds",
+    description: "Noise-cancelling wireless earbuds for studying",
+    category: "gadgets",
+    price: 89.99,
+    rating: 4.3,
+    image: "https://picsum.photos/seed/earbuds/600/400",
+  },
+  {
+    id: 4,
+    name: "Programming Course",
+    description: "Complete web development course for beginners",
+    category: "courses",
+    price: 129.99,
+    rating: 4.7,
+    image: "https://picsum.photos/seed/course/600/400",
+  },
+  {
+    id: 5,
+    name: "Scientific Calculator",
+    description: "Advanced scientific calculator for engineering students",
+    category: "gadgets",
+    price: 34.99,
+    rating: 4.6,
+    image: "https://picsum.photos/seed/calculator/600/400",
+  },
+  {
+    id: 6,
+    name: "Study Planner",
+    description: "Academic year planner with weekly schedules",
+    category: "stationery",
+    price: 14.99,
+    rating: 4.4,
+    image: "https://picsum.photos/seed/planner/600/400",
+  },
+];
+
+// Todos state
+let todos = [];
+
+// Initialize the application
+function init() {
+  loadFromLocalStorage();
+  setupEventListeners();
+  renderContent();
+  checkOverdueTodos();
+  // Periodically check overdue every minute
+  setInterval(checkOverdueTodos, 60 * 1000);
 }
 
-function insertBulletList() {
-  document.execCommand("insertUnorderedList");
+// LocalStorage functions
+function saveToLocalStorage() {
+  localStorage.setItem("notes", JSON.stringify(notes));
+  localStorage.setItem("todos", JSON.stringify(todos));
+  localStorage.setItem("darkMode", darkMode);
 }
 
+function loadFromLocalStorage() {
+  const savedNotes = localStorage.getItem("notes");
+  const savedTodos = localStorage.getItem("todos");
+  const savedDarkMode = localStorage.getItem("darkMode");
+
+  if (savedNotes) notes = JSON.parse(savedNotes);
+  if (savedTodos) todos = JSON.parse(savedTodos);
+  if (savedDarkMode) darkMode = savedDarkMode === "true";
+
+  if (darkMode) {
+    document.body.classList.add("bg-gray-900");
+    document.body.classList.remove("bg-gray-50");
+    document.getElementById("dark-mode-toggle").textContent = "☀️";
+  }
+}
+
+// Event listeners setup
+function setupEventListeners() {
+  // Navigation
+  document
+    .getElementById("nav-notes")
+    .addEventListener("click", () => switchTab("notes"));
+  document
+    .getElementById("nav-products")
+    .addEventListener("click", () => switchTab("products"));
+  document
+    .getElementById("nav-todos")
+    .addEventListener("click", () => switchTab("todos"));
+
+  // Dark mode toggle
+  document
+    .getElementById("dark-mode-toggle")
+    .addEventListener("click", toggleDarkMode);
+
+  // Search and filter inputs
+  document.getElementById("note-search").addEventListener("input", renderNotes);
+  document.getElementById("note-sort").addEventListener("change", renderNotes);
+  document
+    .getElementById("product-search")
+    .addEventListener("input", renderProducts);
+  document
+    .getElementById("product-category-filter")
+    .addEventListener("change", renderProducts);
+  document
+    .getElementById("product-sort")
+    .addEventListener("change", renderProducts);
+  document
+    .getElementById("todo-filter")
+    .addEventListener("change", renderTodos);
+  document.getElementById("todo-sort").addEventListener("change", renderTodos);
+}
+
+// Tab switching
+function switchTab(tab) {
+  activeTab = tab;
+
+  // Update navigation buttons style
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    btn.classList.remove("active", "text-blue-600", "bg-blue-100");
+    btn.classList.add("text-gray-600");
+  });
+  const activeBtn = document.getElementById(`nav-${tab}`);
+  if (activeBtn) {
+    activeBtn.classList.add("active", "text-blue-600", "bg-blue-100");
+    activeBtn.classList.remove("text-gray-600");
+  }
+
+  // Show/hide content sections
+  document
+    .querySelectorAll(".content-section")
+    .forEach((section) => section.classList.add("hidden"));
+  const show = document.getElementById(`${tab}-section`);
+  if (show) show.classList.remove("hidden");
+
+  renderContent();
+}
+
+// Dark mode toggle
+function toggleDarkMode() {
+  darkMode = !darkMode;
+  const toggleBtn = document.getElementById("dark-mode-toggle");
+
+  if (darkMode) {
+    document.body.classList.add("bg-gray-900");
+    document.body.classList.remove("bg-gray-50");
+    toggleBtn.textContent = "☀️";
+  } else {
+    document.body.classList.add("bg-gray-50");
+    document.body.classList.remove("bg-gray-900");
+    toggleBtn.textContent = "🌙";
+  }
+
+  saveToLocalStorage();
+}
+
+// ---------- Notes functionality ----------
+
+// Override addNote to support edit mode (editingNoteId)
 function addNote() {
-  const title = document.getElementById("note-title").value.trim();
-  const content = document.getElementById("note-content").innerHTML.trim();
-  const category = document.getElementById("note-category").value;
-  const tags = document
-    .getElementById("note-tags")
-    .value.split(",")
-    .map((t) => t.trim())
-    .filter((t) => t);
+  const titleEl = document.getElementById("note-title");
+  const contentEl = document.getElementById("note-content");
+  const categoryEl = document.getElementById("note-category");
+  const tagsInputEl = document.getElementById("note-tags");
 
-  if (!title || !content) return alert("Title and Content are required.");
+  const title = titleEl.value.trim();
+  const content = contentEl.innerHTML.trim();
+  const category = categoryEl.value;
+  const tagsInput = tagsInputEl.value;
+  const tags = tagsInput
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter((tag) => tag);
+
+  if (!title || !content) {
+    alert("Please fill in both title and content");
+    return;
+  }
 
   const nowISO = new Date().toISOString();
+
   if (editingNoteId) {
+    // Update existing
     const idx = notes.findIndex((n) => n.id === editingNoteId);
     if (idx !== -1) {
-      notes[idx] = {
-        ...notes[idx],
-        title,
-        content,
-        category,
-        tags,
-        updatedAt: nowISO,
-      };
+      notes[idx].title = title;
+      notes[idx].content = content;
+      notes[idx].category = category;
+      notes[idx].tags = tags;
+      notes[idx].updatedAt = nowISO;
     }
     editingNoteId = null;
     document.getElementById("note-form-heading").textContent =
       "Create New Note";
     document.getElementById("note-save-btn").textContent = "Save Note";
   } else {
-    notes.unshift({
+    // New
+    const newNote = {
       id: Date.now(),
       title,
       content,
       category,
       tags,
       createdAt: nowISO,
-    });
+      updatedAt: nowISO,
+      pinned: false,
+    };
+    notes.unshift(newNote);
   }
 
-  saveNotes();
+  saveToLocalStorage();
   renderNotes();
   clearNoteForm();
+}
+
+function clearNoteForm() {
+  document.getElementById("note-title").value = "";
+  document.getElementById("note-content").innerHTML = "";
+  document.getElementById("note-tags").value = "";
+  document.getElementById("note-category").value = "Study";
+  editingNoteId = null;
+  document.getElementById("note-form-heading").textContent = "Create New Note";
+  document.getElementById("note-save-btn").textContent = "Save Note";
+}
+
+function renderNotes() {
+  const searchTerm = document.getElementById("note-search").value.toLowerCase();
+  const sortBy = document.getElementById("note-sort").value;
+
+  let filteredNotes = notes.filter(
+    (note) =>
+      note.title.toLowerCase().includes(searchTerm) ||
+      note.content.toLowerCase().includes(searchTerm) ||
+      note.tags.some((tag) => tag.toLowerCase().includes(searchTerm)) ||
+      note.category.toLowerCase().includes(searchTerm)
+  );
+
+  // Sort notes
+  filteredNotes.sort((a, b) => {
+    switch (sortBy) {
+      case "date-desc":
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      case "date-asc":
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      case "title":
+        return a.title.localeCompare(b.title);
+      default:
+        return 0;
+    }
+  });
+
+  // Put pinned notes first
+  filteredNotes.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+
+  const notesList = document.getElementById("notes-list");
+  notesList.innerHTML = "";
+
+  if (filteredNotes.length === 0) {
+    notesList.innerHTML =
+      '<p class="text-gray-500 text-center py-8">No notes found</p>';
+    return;
+  }
+
+  filteredNotes.forEach((note) => {
+    const noteElement = document.createElement("div");
+    noteElement.className = `p-4 rounded-lg border ${
+      note.pinned ? "bg-blue-50 border-blue-200" : "bg-white border-gray-200"
+    }`;
+    noteElement.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="font-semibold text-lg">${escapeHtml(
+                          note.title
+                        )}</h3>
+                        <div class="flex space-x-2">
+                            <button onclick="togglePinNote(${
+                              note.id
+                            })" title="${
+      note.pinned ? "Unpin" : "Pin"
+    }" class="text-${note.pinned ? "blue" : "gray"}-600 hover:text-blue-800">
+                                ${note.pinned ? "📌" : "📍"}
+                            </button>
+                            <button onclick="editNote(${
+                              note.id
+                            })" title="Edit" class="text-gray-600 hover:text-blue-600">✏️</button>
+                            <button onclick="deleteNote(${
+                              note.id
+                            })" title="Delete" class="text-gray-600 hover:text-red-600">🗑️</button>
+                        </div>
+                    </div>
+                    <div class="text-sm text-gray-600 mb-2">
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">${escapeHtml(
+                          note.category
+                        )}</span>
+                        ${note.tags
+                          .map(
+                            (tag) =>
+                              `<span class="bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs ml-1">${escapeHtml(
+                                tag
+                              )}</span>`
+                          )
+                          .join("")}
+                    </div>
+                    <div class="prose prose-sm max-w-none mb-2">${
+                      note.content
+                    }</div>
+                    <div class="text-xs text-gray-500">
+                        Created: ${new Date(note.createdAt).toLocaleString()} | 
+                        Updated: ${new Date(note.updatedAt).toLocaleString()}
+                    </div>
+                `;
+    notesList.appendChild(noteElement);
+  });
+}
+
+function togglePinNote(id) {
+  const noteIndex = notes.findIndex((note) => note.id === id);
+  if (noteIndex !== -1) {
+    notes[noteIndex].pinned = !notes[noteIndex].pinned;
+    saveToLocalStorage();
+    renderNotes();
+  }
 }
 
 function editNote(id) {
@@ -108,216 +351,74 @@ function editNote(id) {
   if (!note) return;
   editingNoteId = id;
   document.getElementById("note-title").value = note.title;
+  document.getElementById("note-content").innerHTML = note.content;
   document.getElementById("note-category").value = note.category;
   document.getElementById("note-tags").value = note.tags.join(", ");
-  document.getElementById("note-content").innerHTML = note.content;
   document.getElementById("note-form-heading").textContent = "Edit Note";
   document.getElementById("note-save-btn").textContent = "Update Note";
+  // Switch to notes tab if not active
+  if (activeTab !== "notes") switchTab("notes");
+  // scroll to top of form
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function deleteNote(id) {
-  if (!confirm("Delete this note?")) return;
-  notes = notes.filter((n) => n.id !== id);
-  saveNotes();
-  renderNotes();
-}
-
-function clearNoteForm() {
-  document.getElementById("note-title").value = "";
-  document.getElementById("note-category").value = "Study";
-  document.getElementById("note-tags").value = "";
-  document.getElementById("note-content").innerHTML = "";
-}
-
-function saveNotes() {
-  localStorage.setItem("notes", JSON.stringify(notes));
-}
-
-function loadNotes() {
-  const saved = localStorage.getItem("notes");
-  if (saved) notes = JSON.parse(saved);
-}
-
-function renderNotes() {
-  const container = document.getElementById("notes-list");
-  container.innerHTML = "";
-  const searchTerm =
-    document.getElementById("note-search")?.value?.toLowerCase() || "";
-  const sortOption = document.getElementById("note-sort")?.value || "date-desc";
-
-  let filtered = notes.filter(
-    (n) =>
-      n.title.toLowerCase().includes(searchTerm) ||
-      n.content.toLowerCase().includes(searchTerm)
-  );
-
-  if (sortOption === "date-desc")
-    filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  else if (sortOption === "date-asc")
-    filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  else if (sortOption === "title")
-    filtered.sort((a, b) => a.title.localeCompare(b.title));
-
-  filtered.forEach((note) => {
-    const el = document.createElement("div");
-    el.className = "bg-gray-50 p-4 rounded-md shadow flex flex-col";
-    el.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <h3 class="font-semibold text-lg">${escapeHtml(
-                          note.title
-                        )}</h3>
-                        <div class="space-x-2">
-                            <button onclick="editNote(${
-                              note.id
-                            })" class="text-sm bg-yellow-500 text-white px-2 py-1 rounded-md hover:bg-yellow-600">Edit</button>
-                            <button onclick="deleteNote(${
-                              note.id
-                            })" class="text-sm bg-red-500 text-white px-2 py-1 rounded-md hover:bg-red-600">Delete</button>
-                        </div>
-                    </div>
-                    <div class="mt-2 text-sm text-gray-600">${escapeHtml(
-                      note.category
-                    )} | ${note.tags.join(", ")}</div>
-                    <div class="mt-2 text-gray-800">${note.content}</div>
-                `;
-    container.appendChild(el);
-  });
-}
-
-document.getElementById("note-search")?.addEventListener("input", renderNotes);
-document.getElementById("note-sort")?.addEventListener("change", renderNotes);
-
-// --------------------------
-// Products Module
-// --------------------------
-let products = [];
-let editingProductId = null;
-
-function addOrUpdateProduct() {
-  const name = document.getElementById("product-name").value.trim();
-  const category = document.getElementById("product-category").value;
-  const price = parseFloat(document.getElementById("product-price").value);
-  const rating = parseFloat(document.getElementById("product-rating").value);
-  const description = document
-    .getElementById("product-description")
-    .value.trim();
-  const image =
-    document.getElementById("product-image").value.trim() ||
-    "https://picsum.photos/600/400";
-
-  if (!name || isNaN(price) || isNaN(rating))
-    return alert("Please provide valid name, price, and rating.");
-
-  const nowISO = new Date().toISOString();
-
-  if (editingProductId) {
-    const idx = products.findIndex((p) => p.id === editingProductId);
-    if (idx !== -1) {
-      products[idx] = {
-        id: editingProductId,
-        name,
-        category,
-        price,
-        rating,
-        description,
-        image,
-        updatedAt: nowISO,
-      };
-    }
-    editingProductId = null;
-    document.getElementById("product-form-heading").textContent =
-      "Add New Product";
-    document.getElementById("product-save-btn").textContent = "Save Product";
-  } else {
-    const newProduct = {
-      id: Date.now(),
-      name,
-      category,
-      price,
-      rating,
-      description,
-      image,
-      createdAt: nowISO,
-    };
-    products.unshift(newProduct);
+  if (confirm("Are you sure you want to delete this note?")) {
+    notes = notes.filter((note) => note.id !== id);
+    saveToLocalStorage();
+    renderNotes();
   }
-
-  saveProducts();
-  renderProducts();
-  clearProductForm();
 }
 
-function clearProductForm() {
-  document.getElementById("product-name").value = "";
-  document.getElementById("product-category").value = "books";
-  document.getElementById("product-price").value = "";
-  document.getElementById("product-rating").value = "";
-  document.getElementById("product-description").value = "";
-  document.getElementById("product-image").value = "";
+// Rich text formatting
+function formatText(format) {
+  document.execCommand(format, false, null);
 }
 
-function editProduct(id) {
-  const product = products.find((p) => p.id === id);
-  if (!product) return;
-
-  editingProductId = id;
-  document.getElementById("product-name").value = product.name;
-  document.getElementById("product-category").value = product.category;
-  document.getElementById("product-price").value = product.price;
-  document.getElementById("product-rating").value = product.rating;
-  document.getElementById("product-description").value = product.description;
-  document.getElementById("product-image").value = product.image;
-
-  document.getElementById("product-form-heading").textContent = "Edit Product";
-  document.getElementById("product-save-btn").textContent = "Update Product";
-  window.scrollTo({ top: 0, behavior: "smooth" });
+function insertBulletList() {
+  document.execCommand("insertUnorderedList", false, null);
 }
 
-function deleteProduct(id) {
-  if (!confirm("Are you sure you want to delete this product?")) return;
-  products = products.filter((p) => p.id !== id);
-  saveProducts();
-  renderProducts();
-}
-
-function saveProducts() {
-  localStorage.setItem("products", JSON.stringify(products));
-}
-
-function loadProducts() {
-  const saved = localStorage.getItem("products");
-  if (saved) products = JSON.parse(saved);
-}
-
+// ---------- Products functionality ----------
 function renderProducts() {
-  const container = document.getElementById("products-list");
-  container.innerHTML = "";
-  const searchTerm =
-    document.getElementById("product-search")?.value?.toLowerCase() || "";
-  const categoryFilter =
-    document.getElementById("product-category-filter")?.value || "all";
-  const sortOption = document.getElementById("product-sort")?.value || "newest";
+  const searchTerm = document
+    .getElementById("product-search")
+    .value.toLowerCase();
+  const categoryFilter = document.getElementById(
+    "product-category-filter"
+  ).value;
+  const sortBy = document.getElementById("product-sort").value;
 
-  let filtered = products.filter((p) =>
-    p.name.toLowerCase().includes(searchTerm)
+  let filteredProducts = products.filter(
+    (product) =>
+      (categoryFilter === "all" || product.category === categoryFilter) &&
+      (product.name.toLowerCase().includes(searchTerm) ||
+        product.description.toLowerCase().includes(searchTerm))
   );
-  if (categoryFilter !== "all")
-    filtered = filtered.filter((p) => p.category === categoryFilter);
 
-  if (sortOption === "newest")
-    filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  else if (sortOption === "price-asc")
-    filtered.sort((a, b) => a.price - b.price);
-  else if (sortOption === "price-desc")
-    filtered.sort((a, b) => b.price - a.price);
-  else if (sortOption === "rating")
-    filtered.sort((a, b) => b.rating - a.rating);
+  // Sort products
+  filteredProducts.sort((a, b) => {
+    switch (sortBy) {
+      case "price-asc":
+        return a.price - b.price;
+      case "price-desc":
+        return b.price - a.price;
+      case "rating":
+        return b.rating - a.rating;
+      case "name":
+        return a.name.localeCompare(b.name);
+      default:
+        return 0;
+    }
+  });
 
-  filtered.forEach((product) => {
+  const productsGrid = document.getElementById("products-grid");
+  productsGrid.innerHTML = "";
+
+  filteredProducts.forEach((product) => {
     const productElement = document.createElement("div");
     productElement.className =
-      "bg-gray-50 rounded-lg shadow-md overflow-hidden flex flex-col";
+      "bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow flex flex-col";
     productElement.innerHTML = `
                     <img src="${product.image}" alt="${escapeHtml(
       product.name
@@ -338,124 +439,236 @@ function renderProducts() {
                             <div class="text-sm text-gray-700 font-semibold">₹${product.price.toFixed(
                               2
                             )}</div>
-                            <div class="flex space-x-2">
-                                <button onclick="editProduct(${
-                                  product.id
-                                })" class="text-sm bg-yellow-500 text-white px-2 py-1 rounded-md hover:bg-yellow-600">Edit</button>
-                                <button onclick="deleteProduct(${
-                                  product.id
-                                })" class="text-sm bg-red-500 text-white px-2 py-1 rounded-md hover:bg-red-600">Delete</button>
-                            </div>
+                            <button onclick="viewProduct(${
+                              product.id
+                            })" class="text-sm bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700">View</button>
                         </div>
                     </div>
                 `;
-    container.appendChild(productElement);
+    productsGrid.appendChild(productElement);
+  });
+
+  if (filteredProducts.length === 0) {
+    productsGrid.innerHTML =
+      '<p class="text-gray-500 text-center col-span-full py-8">No products found</p>';
+  }
+}
+
+// product view placeholder (optional enhancement)
+function viewProduct(id) {
+  const p = products.find((pr) => pr.id === id);
+  if (!p) return;
+  alert(
+    `${p.name}\n\nPrice: ₹${p.price}\nRating: ${p.rating}\n\n${p.description}`
+  );
+}
+
+// ---------- Todos functionality ----------
+function addTodo() {
+  const title = document.getElementById("todo-title").value.trim();
+  const description = document.getElementById("todo-description").value.trim();
+  const dueDate = document.getElementById("todo-due-date").value; // yyyy-mm-dd
+  const category = document.getElementById("todo-category").value;
+  const priority = document.getElementById("todo-priority").value;
+
+  if (!title) {
+    alert("Please enter a task title.");
+    return;
+  }
+
+  const newTodo = {
+    id: Date.now(),
+    title,
+    description,
+    dueDate: dueDate || null,
+    category,
+    priority,
+    completed: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  todos.unshift(newTodo);
+  saveToLocalStorage();
+  renderTodos();
+  clearTodoForm();
+}
+
+function clearTodoForm() {
+  document.getElementById("todo-title").value = "";
+  document.getElementById("todo-description").value = "";
+  document.getElementById("todo-due-date").value = "";
+  document.getElementById("todo-category").value = "Study";
+  document.getElementById("todo-priority").value = "low";
+}
+
+function renderTodos() {
+  const filter = document.getElementById("todo-filter").value;
+  const sortBy = document.getElementById("todo-sort").value;
+  const listEl = document.getElementById("todos-list");
+
+  let filtered = todos.slice(); // copy
+
+  // Filter
+  const now = new Date();
+  filtered = filtered.filter((todo) => {
+    if (filter === "all") return true;
+    if (filter === "pending") return !todo.completed;
+    if (filter === "completed") return todo.completed;
+    if (filter === "today") {
+      if (!todo.dueDate) return false;
+      const due = new Date(todo.dueDate + "T23:59:59");
+      return due.toDateString() === now.toDateString();
+    }
+    if (filter === "week") {
+      if (!todo.dueDate) return false;
+      const due = new Date(todo.dueDate + "T23:59:59");
+      const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays <= 7;
+    }
+    if (filter === "overdue") {
+      if (!todo.dueDate) return false;
+      const due = new Date(todo.dueDate + "T23:59:59");
+      return !todo.completed && due < now;
+    }
+    return true;
+  });
+
+  // Sort
+  filtered.sort((a, b) => {
+    switch (sortBy) {
+      case "date-asc":
+        return compareDates(a.dueDate, b.dueDate);
+      case "date-desc":
+        return compareDates(b.dueDate, a.dueDate);
+      case "priority":
+        return priorityWeight(b.priority) - priorityWeight(a.priority);
+      case "title":
+        return a.title.localeCompare(b.title);
+      default:
+        return 0;
+    }
+  });
+
+  listEl.innerHTML = "";
+  if (filtered.length === 0) {
+    listEl.innerHTML =
+      '<p class="text-gray-500 text-center py-8">No tasks to show</p>';
+    return;
+  }
+
+  filtered.forEach((todo) => {
+    const dueText = todo.dueDate
+      ? new Date(todo.dueDate).toLocaleDateString()
+      : "No due date";
+    const todoEl = document.createElement("div");
+    const overdueClass =
+      todo.dueDate &&
+      !todo.completed &&
+      new Date(todo.dueDate + "T23:59:59") < new Date()
+        ? "overdue"
+        : "";
+    todoEl.className = `p-4 rounded-lg border bg-white border-gray-200 flex justify-between items-start ${overdueClass}`;
+    todoEl.innerHTML = `
+                    <div>
+                        <div class="flex items-center space-x-3">
+                            <input type="checkbox" ${
+                              todo.completed ? "checked" : ""
+                            } onclick="toggleTodoComplete(${
+      todo.id
+    })" class="w-4 h-4">
+                            <div>
+                                <div class="font-semibold ${
+                                  todo.completed
+                                    ? "line-through text-gray-400"
+                                    : ""
+                                }">${escapeHtml(todo.title)}</div>
+                                <div class="text-sm text-gray-500">${escapeHtml(
+                                  todo.description
+                                )}</div>
+                                <div class="text-xs text-gray-500 mt-1">Due: ${dueText} • ${escapeHtml(
+      todo.category
+    )} • Priority: ${escapeHtml(todo.priority)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-end space-y-2">
+                        <button onclick="editTodoPrompt(${
+                          todo.id
+                        })" class="text-sm text-gray-600 hover:text-blue-600">✏️</button>
+                        <button onclick="deleteTodo(${
+                          todo.id
+                        })" class="text-sm text-gray-600 hover:text-red-600">🗑️</button>
+                    </div>
+                `;
+    listEl.appendChild(todoEl);
   });
 }
 
-document
-  .getElementById("product-search")
-  ?.addEventListener("input", renderProducts);
-document
-  .getElementById("product-category-filter")
-  ?.addEventListener("change", renderProducts);
-document
-  .getElementById("product-sort")
-  ?.addEventListener("change", renderProducts);
-
-// --------------------------
-// To-Dos Module
-// --------------------------
-let todos = [];
-
-function addTodo() {
-  const title = document.getElementById("todo-title").value.trim();
-  const dueDate = document.getElementById("todo-due-date").value;
-  const category = document.getElementById("todo-category").value;
-
-  if (!title || !dueDate) return alert("Title and Due Date required.");
-
-  todos.unshift({ id: Date.now(), title, dueDate, category, completed: false });
-  saveTodos();
-  renderTodos();
-  document.getElementById("todo-title").value = "";
-  document.getElementById("todo-due-date").value = "";
+function compareDates(a, b) {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return new Date(a) - new Date(b);
 }
 
-function toggleTodo(id) {
-  const todo = todos.find((t) => t.id === id);
-  if (todo) todo.completed = !todo.completed;
-  saveTodos();
+function priorityWeight(p) {
+  return p === "high" ? 3 : p === "medium" ? 2 : 1;
+}
+
+function toggleTodoComplete(id) {
+  const idx = todos.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  todos[idx].completed = !todos[idx].completed;
+  saveToLocalStorage();
   renderTodos();
 }
 
 function deleteTodo(id) {
   if (!confirm("Delete this task?")) return;
   todos = todos.filter((t) => t.id !== id);
-  saveTodos();
+  saveToLocalStorage();
   renderTodos();
 }
 
-function saveTodos() {
-  localStorage.setItem("todos", JSON.stringify(todos));
+function editTodoPrompt(id) {
+  const todo = todos.find((t) => t.id === id);
+  if (!todo) return;
+  // populate form with todo and remove original
+  document.getElementById("todo-title").value = todo.title;
+  document.getElementById("todo-description").value = todo.description;
+  document.getElementById("todo-due-date").value = todo.dueDate || "";
+  document.getElementById("todo-category").value = todo.category;
+  document.getElementById("todo-priority").value = todo.priority;
+  // remove the todo to be replaced on save
+  todos = todos.filter((t) => t.id !== id);
+  saveToLocalStorage();
+  renderTodos();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function loadTodos() {
-  const saved = localStorage.getItem("todos");
-  if (saved) todos = JSON.parse(saved);
+function checkOverdueTodos() {
+  // highlight overdue tasks visually via renderTodos (overdue class)
+  renderTodos();
 }
 
-function renderTodos() {
-  const container = document.getElementById("todos-list");
-  container.innerHTML = "";
-  const searchTerm =
-    document.getElementById("todo-search")?.value?.toLowerCase() || "";
-  const sortOption = document.getElementById("todo-sort")?.value || "newest";
-
-  let filtered = todos.filter((t) =>
-    t.title.toLowerCase().includes(searchTerm)
-  );
-
-  if (sortOption === "newest") filtered.sort((a, b) => b.id - a.id);
-  else if (sortOption === "oldest") filtered.sort((a, b) => a.id - b.id);
-  else if (sortOption === "due-soon")
-    filtered.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-
-  filtered.forEach((todo) => {
-    const overdue = !todo.completed && new Date(todo.dueDate) < new Date();
-    const el = document.createElement("div");
-    el.className = `flex justify-between items-center p-3 rounded-md ${
-      overdue ? "overdue" : ""
-    } bg-gray-50 shadow`;
-    el.innerHTML = `
-                    <div>
-                        <input type="checkbox" ${
-                          todo.completed ? "checked" : ""
-                        } onclick="toggleTodo(${todo.id})">
-                        <span class="ml-2 ${
-                          todo.completed ? "line-through text-gray-400" : ""
-                        }">${escapeHtml(todo.title)}</span>
-                        <span class="ml-2 text-sm text-gray-500">(${
-                          todo.category
-                        } | ${todo.dueDate})</span>
-                    </div>
-                    <button onclick="deleteTodo(${
-                      todo.id
-                    })" class="text-sm bg-red-500 text-white px-2 py-1 rounded-md hover:bg-red-600">Delete</button>
-                `;
-    container.appendChild(el);
-  });
+// ---------- Utilities ----------
+function renderContent() {
+  // Render whatever is needed for current tab
+  renderNotes();
+  renderProducts();
+  renderTodos();
 }
 
-document.getElementById("todo-search")?.addEventListener("input", renderTodos);
-document.getElementById("todo-sort")?.addEventListener("change", renderTodos);
+// Small html escape to avoid any accidental injection in plain fields (content intentionally left as HTML)
+function escapeHtml(str) {
+  if (!str && str !== 0) return "";
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
-// --------------------------
-// Load all data
-// --------------------------
-loadNotes();
-renderNotes();
-loadProducts();
-renderProducts();
-loadTodos();
-renderTodos();
+// Initialize app on load
+window.addEventListener("load", init);
